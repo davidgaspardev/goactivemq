@@ -2,6 +2,7 @@ package goactivemq
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -45,10 +46,15 @@ func (activemq *_ActiveMQ) Connect(address string, port uint16) (err error) {
 func (activemq *_ActiveMQ) setupOptions(opts *mqtt.ClientOptions) {
 	// Use tcp to comunication address
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", activemq.address, activemq.port))
-	opts.SetClientID(activemq.clientId)
 	opts.SetKeepAlive(60 * time.Second)
 	opts.SetPingTimeout(1 * time.Second)
 	opts.SetCleanSession(false)
+
+	if activemq.clientId != "" {
+		opts.SetClientID(activemq.clientId)
+	} else {
+		opts.SetClientID(fmt.Sprint(rand.Intn(256)))
+	}
 }
 
 func (activemq *_ActiveMQ) Disconnect() (err error) {
