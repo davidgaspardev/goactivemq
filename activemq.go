@@ -13,7 +13,7 @@ type ActiveMQ interface {
 
 	SetClientId(session interface{})
 
-	Connect(address string) error
+	Connect(address string, port uint16) error
 	Disconnect() error
 
 	Publisher(topic string, data []byte) error
@@ -23,8 +23,10 @@ type ActiveMQ interface {
 }
 
 type _ActiveMQ struct {
-	showLog  bool
-	addr     string
+	showLog bool
+
+	address  string
+	port     uint16
 	clientId string
 
 	// Client from ActiveMQ (MQTT)
@@ -43,11 +45,13 @@ func (activemq *_ActiveMQ) SetClientId(clientId interface{}) {
 	activemq.clientId = fmt.Sprint(clientId)
 }
 
-func (activemq *_ActiveMQ) Connect(address string) (err error) {
+func (activemq *_ActiveMQ) Connect(address string, port uint16) (err error) {
 	// Add options to connection
 	opts := mqtt.NewClientOptions()
 
-	activemq.addr = address
+	activemq.address = address
+	activemq.port = port
+
 	activemq.setupOptions(opts)
 	activemq.client = mqtt.NewClient(opts)
 	if token := activemq.client.Connect(); token.Wait() && token.Error() != nil {
@@ -58,7 +62,8 @@ func (activemq *_ActiveMQ) Connect(address string) (err error) {
 }
 
 func (activemq *_ActiveMQ) setupOptions(opts *mqtt.ClientOptions) {
-	opts.AddBroker(fmt.Sprintf("tcp://%s", activemq.addr))
+	// Use tcp to comunication address
+	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", activemq.address, activemq.port))
 	opts.SetClientID(activemq.clientId)
 	opts.SetKeepAlive(60 * time.Second)
 	opts.SetPingTimeout(1 * time.Second)
