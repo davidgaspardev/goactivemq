@@ -1,4 +1,4 @@
-package activemq
+package goactivemq
 
 import (
 	"fmt"
@@ -6,21 +6,6 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
-
-type ActiveMQ interface {
-	// Debug
-	SetLogger(showLog bool)
-
-	SetClientId(session interface{})
-
-	Connect(address string, port uint16) error
-	Disconnect() error
-
-	Publisher(topic string, data []byte) error
-	PublisherRetaining(topic string, data []byte) error
-
-	Subscriber(topic string, handle func(data []byte)) error
-}
 
 type _ActiveMQ struct {
 	showLog bool
@@ -31,10 +16,6 @@ type _ActiveMQ struct {
 
 	// Client from ActiveMQ (MQTT)
 	client mqtt.Client
-}
-
-func NewActiveMQ() ActiveMQ {
-	return &_ActiveMQ{}
 }
 
 func (activemq *_ActiveMQ) SetLogger(showLog bool) {
