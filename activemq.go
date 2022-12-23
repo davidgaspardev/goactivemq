@@ -1,26 +1,34 @@
 package activemq
 
 import (
-	"github.com/go-stomp/stomp/v3"
-	"github.com/go-stomp/stomp/v3/frame"
+	"fmt"
+	"time"
+
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 type ActiveMQ interface {
 	// Debug
 	SetLogger(showLog bool)
 
+	SetClientId(session interface{})
+
 	Connect(address string) error
 	Disconnect() error
 
-	Publisher(topic string, msg string) error
-	Subscriber(topic string, handle func(msg string, err error)) error
+	Publisher(topic string, data []byte) error
+	PublisherRetaining(topic string, data []byte) error
+
+	Subscriber(topic string, handle func(data []byte)) error
 }
 
 type _ActiveMQ struct {
-	showLog bool
-	addr    string
+	showLog  bool
+	addr     string
+	clientId string
 
-	conn *stomp.Conn
+	// Client from ActiveMQ (MQTT)
+	client mqtt.Client
 }
 
 func NewActiveMQ() ActiveMQ {
@@ -31,43 +39,57 @@ func (activemq *_ActiveMQ) SetLogger(showLog bool) {
 	activemq.showLog = showLog
 }
 
+func (activemq *_ActiveMQ) SetClientId(clientId interface{}) {
+	activemq.clientId = fmt.Sprint(clientId)
+}
+
 func (activemq *_ActiveMQ) Connect(address string) (err error) {
 	// Add options to connection
-	var options []func(*stomp.Conn) error = []func(*stomp.Conn) error{
-		stomp.ConnOpt.Login("admin", "admin"),
+	opts := mqtt.NewClientOptions()
+
+	activemq.addr = address
+	activemq.setupOptions(opts)
+	activemq.client = mqtt.NewClient(opts)
+	if token := activemq.client.Connect(); token.Wait() && token.Error() != nil {
+		err = token.Error()
 	}
 
-	activemq.conn, err = stomp.Dial("tcp", address, options...)
 	return err
+}
+
+func (activemq *_ActiveMQ) setupOptions(opts *mqtt.ClientOptions) {
+	opts.AddBroker(fmt.Sprintf("tcp://%s", activemq.addr))
+	opts.SetClientID(activemq.clientId)
+	opts.SetKeepAlive(60 * time.Second)
+	opts.SetPingTimeout(1 * time.Second)
+	opts.SetCleanSession(false)
 }
 
 func (activemq *_ActiveMQ) Disconnect() (err error) {
-	if activemq.conn != nil {
-		err = activemq.Disconnect()
+	activemq.client.Disconnect(250)
+	return err
+}
+
+func (activemq *_ActiveMQ) Publisher(topic string, data []byte) (err error) {
+	if token := activemq.client.Publish(topic, 0x01, false, data); token.Wait() && token.Error() != nil {
+		err = token.Error()
 	}
 	return err
 }
 
-func (activemq *_ActiveMQ) Publisher(topic string, msg string) (err error) {
-	err = activemq.conn.Send(topic, "text/plain", []byte(msg), func(framing *frame.Frame) error {
-		// Add RECEIPT header to sync the communication
-		framing.Header.Add(frame.Receipt, frame.Id)
-		return nil
+func (activemq *_ActiveMQ) PublisherRetaining(topic string, data []byte) (err error) {
+	if token := activemq.client.Publish(topic, 0x01, true, data); token.Wait() && token.Error() != nil {
+		err = token.Error()
+	}
+	return err
+}
+
+func (activemq *_ActiveMQ) Subscriber(topic string, handle func(data []byte)) (err error) {
+	token := activemq.client.Subscribe(topic, 0x01, func(client mqtt.Client, msg mqtt.Message) {
+		handle(msg.Payload())
 	})
-	return err
-}
 
-func (activemq *_ActiveMQ) Subscriber(topic string, handle func(msg string, err error)) error {
-	subscribe, err := activemq.conn.Subscribe(topic, stomp.AckAuto)
-	if err != nil {
-		return err
-	}
+	token.WaitTimeout(16 * time.Second)
 
-	defer subscribe.Unsubscribe()
-
-	for {
-		msg := <-subscribe.C
-		err = msg.Err
-		handle(string(msg.Body), err)
-	}
+	return token.Error()
 }
